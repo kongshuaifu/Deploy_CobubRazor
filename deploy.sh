@@ -8,6 +8,7 @@ DIR="$( cd "$( dirname "$0"  )" && pwd  )"
 
 WEB_ROOT=/data/wwwroot/default/razor
 MYSQL_HOME=/usr/local/mysql/bin
+CRON_TASK=/var/www/cron
 
 RES=0
 
@@ -108,22 +109,21 @@ create_supersuer(){
 		MDPASSWD=`echo -n ${PASSWD} | md5sum | awk -F"  " '{print $1}'`
 
 	        $MYSQL_HOME/mysql -uroot -p123456 -e "
-	        USE razor_db;
+	            USE razor_db;
                 INSERT INTO razor_users (
                 username,
                 password,
                 email,
-		activated
+                activated
                  ) VALUES ('"$SUPUESER"',
                 '"$MDPASSWD"',
                 '"$EMAIL"',
-		1);
+                1);
 	        "
-	else
+	else 
 		echo "User selected Cancel."
 	fi
 }
-
 
 
 
@@ -242,10 +242,14 @@ LANGUAGE=''
                         3>&1 1>&2 2>&3)
 
                         case "$OPT" in
-        		* ) $LANGUAGE='zh_CN' ;;
+                        	"1") LANGUAGE='zh_CN' ;;
+      						"2") LANGUAGE='en_US' ;;
+	  						"3") LANGUAGE='de_DE' ;;
+	  						"4") LANGUAGE='ja_JP' ;;
+        					 * ) LANGUAGE='zh_CN' ;;
                         esac
-            sed -i "s#\$config\['language'\] = '.*';#\$config['language'] = '${LANGUAGE}';#g" $WEB_ROOT/application/config/config.php 
-	    sed -i "s#\$config\['base_url'\] = '.*';#\$config['base_url'] = '${URL}';#g" $WEB_ROOT/application/config/config.php
+            sed -i "s#\$config\['language'\]\s*= '.*';#\$config['language']   = '${LANGUAGE}';#g" $WEB_ROOT/application/config/config.php
+			sed -i "s#\$config\['base_url'\]\s*= '.*';#\$config['base_url']   = '${URL}';#g" $WEB_ROOT/application/config/config.php
 		else
 			echo "User selected Cancel."
 	fi
@@ -261,12 +265,52 @@ change_mod(){
 	chmod -R 755 $WEB_ROOT/assets/sql
 }
 
+set_task(){
+
+	if [ -d $CRON_TASK ]; then
+		cp $DIR/cron_task/razor* $CRON_TASK
+	else
+		mkdir -p $CRON_TASK
+		cp $DIR/cron_task/razor* $CRON_TASK
+	fi
+	
+	# 表示每个小时的第五分钟执行一次脚本
+	echo "5 * * * * /var/www/cron/razor_hourly_archive.sh">>/etc/crontab
+
+	# 表示每天的1：00执行一次脚本
+	echo "0 1 * * * /var/www/cron/razor_daily_archive.sh">>/etc/crontab
+
+	# 表示每个星期天0:30执行一次脚本
+	echo "30 0 * * 0 /var/www/cron/razor_weekly_archive.sh">>/etc/crontab
+
+	# 表示每个月第一天0:30执行一次脚本
+	echo "30 0 1 * * /var/www/cron/razor_monthly_archive.sh">>/etc/crontab
+
+	# 表示每天1:30执行一次脚本
+	echo "30 1 * * * /var/www/cron/razor_laterdata_archive.sh">>/etc/crontab
+
+	let TS_CONF=1
+
+}
+
+
+
 ready_start(){
 
-	sed -i "s#\$route\['default_controller'\] = ".*"#\$route['default_controller'] = ""report/home"";#g" $WEB_ROOT/application/config/routes.php
-	sed -i "s#\$autoload\['language'\] = array('".*"');#\$autoload['language'] = array('allview');#g" $WEB_ROOT/application/config/autoload.php
+	sed -i "s#\$route\['default_controller'\]\s*= ".*"#\$route['default_controller'] = "\"report/home\"";#g" $WEB_ROOT/application/config/routes.php
+	sed -i "s#\$autoload\['language'\]\s*= array(.*);#\$autoload['language'] = array('allview');#g" $WEB_ROOT/application/config/autoload.php
+
 	config_website
 	change_mod
+
+	if [ $TS_CONF = 0 ]; then
+		set_task
+		let TS_CONF=1
+	else
+		break
+	fi
+
+	
 }
 
 
@@ -284,14 +328,14 @@ system_config(){
 		"1" "初始化数据库" \
 		"2" "创建站点超级用户" \
 		"3" "邮件配置" \
-		"4" "准备使用" \
+		"4"	"准备使用" \
 		3>&1 1>&2 2>&3)
 
 	case "$FUN" in
       "1") db_menu ;;
       "2") create_supersuer ;;
-      "3") email_config ;;
-      "4") ready_start ;;
+	  "3") email_config ;;
+	  "4") ready_start ;;
         *) exit 1 ;;
 	 esac
 }
@@ -328,3 +372,4 @@ while true
 done
 }
 main
+
